@@ -1,0 +1,92 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    dls_controller:
+      type: rbdl_dls_controllers/JointGroupDLSController
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    qp_controller:
+      type: qp_controllers/QPController
+
+
+dls_controller:
+  ros__parameters:
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+
+    interface_name: position
+
+    # 포즈 에러 → 트위스트 변환 게인
+    kp_pos: 0.5        # 위치 에러 게인 (m/s per m)
+    kp_rot: 0.5        # 회전 에러 게인 (rad/s per rad)
+
+    # 목표 도달 판단 임계값
+    goal_tolerance: 0.01   # m
+    rot_tolerance:  0.01    # rad
+
+    # 최대 관절 속도
+    dq_max: 0.5        # rad/s
+
+    # 작업반경 제한 (base_link 기준)
+    max_reach: 0.54    # m
+    min_reach: 0.10    # m
+    z_min: 0.0         # m
+    z_max: 1.0         # m
+
+    # 관절 한계 (rad)
+    q_min: [-6.283, -6.283, -3.142, -6.283, -6.283, -6.283]
+    q_max: [ 6.283,  6.283,  3.142,  6.283,  6.283,  6.283]
+
+
+qp_controller:
+  ros__parameters:
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    kp_pos: 0.5
+    kp_rot: 0.5
+    goal_tolerance: 0.01
+    rot_tolerance:  0.01
+    dq_max: 0.5
+    alpha:  1.0e-4
+    max_reach: 0.54
+    min_reach: 0.10
+    z_min: 0.0
+    z_max: 1.0
+    q_min: [-6.283, -6.283, -3.142, -6.283, -6.283, -6.283]
+    q_max: [ 6.283,  6.283,  3.142,  6.283,  6.283,  6.283]
+
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    allow_partial_joints_goal: true   # elbow offline 대응
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    open_loop_control: true
+    constraints:
+      stopped_velocity_tolerance: 0.01
+      goal_time: 0.0

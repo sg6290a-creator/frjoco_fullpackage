@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Manipulator Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1.3.0/build/roslib.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 15px;
+        }
+        .container { max-width: 1800px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 15px; }
+        header h1 { font-size: 1.8em; color: #00d4ff; }
+        #connection-status {
+            display: inline-block; padding: 4px 12px; border-radius: 20px;
+            font-size: 0.85em; margin-top: 8px;
+        }
+        .connected { background: #00c853; }
+        .disconnected { background: #ff1744; }
+
+        /* Camera Row - 3 cameras side by side */
+        .camera-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .camera-panel {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px; padding: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .camera-panel h3 {
+            color: #00d4ff; margin-bottom: 8px; font-size: 0.95em;
+            text-align: center;
+        }
+        .camera-container { text-align: center; }
+        .camera-feed {
+            width: 100%; height: 400px; object-fit: contain;
+            border-radius: 8px; background: #000;
+        }
+
+        /* Main Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        .panel {
+            background: rgba(125, 53, 53, 0.05);
+            border-radius: 12px; padding: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .panel h2 {
+            color: #00d4ff; margin-bottom: 10px; font-size: 1em;
+            border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 6px;
+        }
+
+        /* Buttons */
+        .btn-group { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+        .btn {
+            padding: 8px 14px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 0.85em; font-weight: bold; transition: all 0.2s;
+            user-select: none;
+        }
+        .btn-sm { padding: 5px 10px; font-size: 0.75em; }
+        .btn-lg { padding: 12px 20px; font-size: 1em; min-width: 50px; }
+        .btn-primary { background: linear-gradient(145deg, #00d4ff, #0099cc); color: #fff; }
+        .btn-success { background: linear-gradient(145deg, #00c853, #009624); color: #fff; }
+        .btn-danger { background: linear-gradient(145deg, #ff1744, #d50000); color: #fff; }
+        .btn-warning { background: linear-gradient(145deg, #ff9100, #ff6d00); color: #fff; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,0.3); }
+        .btn:active { transform: translateY(0); }
+
+        /* Joystick */
+        .joystick-container { display: flex; justify-content: center; height: 140px; }
+        #joystick {
+            width: 130px; height: 130px;
+            background: radial-gradient(circle, #2a2a4a 0%, #1a1a2e 100%);
+            border-radius: 50%; position: relative; border: 3px solid #00d4ff;
+        }
+        #joystick-handle {
+            width: 45px; height: 45px;
+            background: linear-gradient(145deg, #00d4ff, #0099cc);
+            border-radius: 50%; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); cursor: grab;
+        }
+        .velocity-display { text-align: center; margin-top: 8px; font-family: monospace; font-size: 0.8em; }
+
+        /* Joint Teleop */
+        .joint-row {
+            display: flex; align-items: center; gap: 6px;
+            margin-bottom: 6px; padding: 6px;
+            background: rgba(0,0,0,0.2); border-radius: 6px;
+        }
+        .joint-row label { width: 70px; font-size: 0.8em; color: #aaa; }
+        .joint-row .value { width: 60px; font-family: monospace; color: #00d4ff; font-size: 0.85em; }
+        .joint-btn {
+            width: 36px; height: 36px; font-size: 1.2em; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Input */
+        .input-group { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+        .input-group label { display: flex; flex-direction: column; flex: 1; min-width: 60px; font-size: 0.85em; }
+        .input-group input {
+            padding: 6px; border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px; background: rgba(255,255,255,0.1);
+            color: #fff; font-size: 0.85em; margin-top: 3px;
+        }
+
+        /* Robot State Viewer */
+        .robot-state-panel { grid-column: span 1; }
+        #robot-viewer {
+            width: 100%; height: 250px;
+            background: rgba(0,0,0,0.3); border-radius: 8px;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .urdf-info {
+            padding: 8px; font-size: 0.75em; font-family: monospace;
+            overflow-y: auto; flex: 1;
+        }
+        .urdf-info .link-item {
+            padding: 3px 6px; margin: 2px 0;
+            background: rgba(0,212,255,0.1); border-radius: 4px;
+            border-left: 3px solid #00d4ff;
+        }
+
+        /* Status */
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .status-item { background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px; }
+        .status-item label { font-size: 0.7em; color: #888; }
+        .status-item .value { font-family: monospace; font-size: 0.9em; color: #00d4ff; }
+        .status-ok { color: #00c853 !important; }
+        .status-warn { color: #ff9100 !important; }
+        .status-bad { color: #ff1744 !important; }
+        .topic-list {
+            margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+            font-size: 0.72em; font-family: monospace;
+        }
+        .topic-pill {
+            padding: 5px 6px; border-radius: 5px; background: rgba(0,0,0,0.22);
+            color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .topic-pill.active { color: #00c853; border-left: 3px solid #00c853; }
+        .topic-pill.missing { color: #ff9100; border-left: 3px solid #ff9100; }
+
+        /* Log */
+        #log {
+            background: rgba(0,0,0,0.3); border-radius: 6px; padding: 6px;
+            height: 100px; overflow-y: auto; font-family: monospace; font-size: 0.75em;
+        }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-info { color: #00d4ff; }
+        .log-success { color: #00c853; }
+        .log-error { color: #ff1744; }
+        .log-warning { color: #ff9100; }
+
+        /* 선택된 타겟 버튼 강조 스타일 */
+        .active-target {
+            border: 2px solid #fff !important;
+            box-shadow: 0 0 15px rgba(0, 200, 83, 0.6);
+            transform: scale(1.05);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .grid { grid-template-columns: repeat(2, 1fr); }
+            .camera-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Mobile Manipulator Control</h1>
+            <div id="connection-status" class="disconnected">Disconnected</div>
+        </header>
+
+        <!-- Camera Row -->
+        <div class="camera-row">
+            <div class="camera-panel">
+                <h3>📷 D405 (Gripper)</h3>
+                <div class="camera-container">
+                    <img id="d405-feed" class="camera-feed" src="" alt="D405 Camera">
+                </div>
+            </div>
+            <div class="camera-panel">
+                <h3>🎯 YOLO Detection</h3>
+                <div class="camera-container">
+                    <img id="yolo-feed" class="camera-feed" src="" alt="YOLO Detection">
+                </div>
+            </div>
+            <div class="camera-panel">
+                <h3>📷 D455 (Navigation)</h3>
+                <div class="camera-container">
+                    <img id="d455-feed" class="camera-feed" src="" alt="D455 Camera">
+                </div>
+            </div>
+        </div>
+        <div class="btn-group" style="margin-bottom: 15px;">
+            <button class="btn btn-sm btn-primary" onclick="startAllCameras()">모든 카메라 시작</button>
+            <button class="btn btn-sm btn-primary" onclick="startNavCameras()">Nav 센서 스트림</button>
+            <button class="btn btn-sm btn-danger" onclick="stopAllCameras()">모든 카메라 정지</button>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Mobile Base -->
+            <div class="panel">
+                <h2>🚗 Mobile Base</h2>
+                <div class="joystick-container">
+                    <div id="joystick"><div id="joystick-handle"></div></div>
+                </div>
+                <div class="velocity-display">
+                    Linear: <span id="linear-vel">0.00</span> m/s | Angular: <span id="angular-vel">0.00</span> rad/s
+                </div>
+                
+                <!-- 속도/가속도 조절 -->
+                <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 0.8em; color: #aaa; margin-bottom: 8px;">⚙️ Speed Settings</div>
+                    
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <label style="font-size: 0.75em; width: 70px;">Max Speed</label>
+                        <input type="range" id="max-speed-slider" min="0.05" max="0.5" step="0.05" value="0.2" 
+                               style="flex: 1;" onchange="updateSpeedSettings()">
+                        <span id="max-speed-val" style="font-size: 0.8em; width: 50px; color: #00d4ff;">0.2 m/s</span>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <label style="font-size: 0.75em; width: 70px;">Accel</label>
+                        <input type="range" id="accel-slider" min="0.05" max="0.5" step="0.05" value="0.1" 
+                               style="flex: 1;" onchange="updateSpeedSettings()">
+                        <span id="accel-val" style="font-size: 0.8em; width: 50px; color: #00d4ff;">0.1 m/s²</span>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                        <label style="font-size: 0.75em; width: 70px;">Angular</label>
+                        <input type="range" id="max-angular-slider" min="0.1" max="1.0" step="0.1" value="0.5" 
+                               style="flex: 1;" onchange="updateSpeedSettings()">
+                        <span id="max-angular-val" style="font-size: 0.8em; width: 50px; color: #00d4ff;">0.5 rad/s</span>
+                    </div>
+                    
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button class="btn btn-sm btn-primary" onclick="applySpeedSettings()" style="flex: 1;">적용</button>
+                        <button class="btn btn-sm btn-warning" onclick="resetSpeedSettings()" style="flex: 1;">초기화</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mobile Navigation -->
+            <div class="panel">
+                <h2>Mobile Navigation</h2>
+                <div class="status-grid">
+                    <div class="status-item"><label>Base X</label><div class="value" id="odom-x">--</div></div>
+                    <div class="status-item"><label>Base Y</label><div class="value" id="odom-y">--</div></div>
+                    <div class="status-item"><label>Yaw</label><div class="value" id="odom-yaw">--</div></div>
+                    <div class="status-item"><label>Nav2</label><div class="value" id="nav2-state">--</div></div>
+                    <div class="status-item"><label>Map</label><div class="value" id="map-state">--</div></div>
+                    <div class="status-item"><label>Scan</label><div class="value" id="scan-state">--</div></div>
+                </div>
+                <div class="input-group" style="margin-top: 10px;">
+                    <label>X<input type="number" id="nav-goal-x" value="0.0" step="0.1"></label>
+                    <label>Y<input type="number" id="nav-goal-y" value="0.0" step="0.1"></label>
+                    <label>Yaw deg<input type="number" id="nav-goal-yaw" value="0" step="5"></label>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="sendNavGoal()" style="flex: 1;">Nav Goal</button>
+                    <button class="btn btn-sm btn-warning" onclick="sendInitialPose()" style="flex: 1;">Set Initial</button>
+                    <button class="btn btn-sm btn-danger" onclick="stopNavigation()" style="flex: 1;">Stop</button>
+                </div>
+                <div class="topic-list">
+                    <div class="topic-pill missing" id="topic-diff-cmd">diff cmd</div>
+                    <div class="topic-pill missing" id="topic-odom">odom</div>
+                    <div class="topic-pill missing" id="topic-filtered">filtered</div>
+                    <div class="topic-pill missing" id="topic-goal">goal</div>
+                    <div class="topic-pill missing" id="topic-map">map</div>
+                    <div class="topic-pill missing" id="topic-scan">scan</div>
+                    <div class="topic-pill missing" id="topic-livox">livox</div>
+                    <div class="topic-pill missing" id="topic-nav-status">nav status</div>
+                </div>
+            </div>
+
+            <!-- Joint Teleop -->
+            <div class="panel">
+                <h2>🎮 Joint Teleop</h2>
+                <div class="joint-control">
+                    <div class="joint-row">
+                        <label>J1 (Base)</label>
+                        <span class="value" id="j1-val">0.000</span>
+                        <button class="btn btn-danger joint-btn" 
+                            onmousedown="startJog(0,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(0,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(0,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(0,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                    <div class="joint-row">
+                        <label>J2 (Shoulder)</label>
+                        <span class="value" id="j2-val">0.000</span>
+                        <button class="btn btn-danger joint-btn"
+                            onmousedown="startJog(1,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(1,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(1,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(1,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                    <div class="joint-row">
+                        <label>J3 (Elbow)</label>
+                        <span class="value" id="j3-val">0.000</span>
+                        <button class="btn btn-danger joint-btn"
+                            onmousedown="startJog(2,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(2,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(2,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(2,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                    <div class="joint-row">
+                        <label>J4 (Wrist)</label>
+                        <span class="value" id="j4-val">0.000</span>
+                        <button class="btn btn-danger joint-btn"
+                            onmousedown="startJog(3,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(3,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(3,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(3,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                    <div class="joint-row">
+                        <label>J5 (Wrist)</label>
+                        <span class="value" id="j5-val">0.000</span>
+                        <button class="btn btn-danger joint-btn"
+                            onmousedown="startJog(4,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(4,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(4,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(4,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                    <div class="joint-row">
+                        <label>J6 (Tool)</label>
+                        <span class="value" id="j6-val">0.000</span>
+                        <button class="btn btn-danger joint-btn"
+                            onmousedown="startJog(5,-1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(5,-1)" ontouchend="stopJog()">−</button>
+                        <button class="btn btn-success joint-btn"
+                            onmousedown="startJog(5,1)" onmouseup="stopJog()" onmouseleave="stopJog()"
+                            ontouchstart="startJog(5,1)" ontouchend="stopJog()">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Arm Poses & Gripper -->
+            <div class="panel">
+                <h2>🦾 Arm Control</h2>
+                <div class="btn-group" style="margin-bottom: 12px;">
+                    <button class="btn btn-primary" onclick="moveToReady()">Ready</button>
+                    <button class="btn btn-warning" onclick="moveToPlace()">Place</button>
+                    <button class="btn btn-danger" onclick="moveToHome()">Home</button>
+                </div>
+                <div class="status-grid" style="margin-bottom: 12px;">
+                    <div class="status-item"><label>Grip X</label><div class="value" id="ee-x">--</div></div>
+                    <div class="status-item"><label>Grip Y</label><div class="value" id="ee-y">--</div></div>
+                    <div class="status-item"><label>Grip Z</label><div class="value" id="ee-z">--</div></div>
+                    <div class="status-item"><label>Frame</label><div class="value" id="ee-frame" style="font-size: 0.7em;">--</div></div>
+                </div>
+                <h3 style="margin: 12px 0 8px; font-size: 0.9em; color: #aaa;">Gripper</h3>
+                <div class="btn-group">
+                    <button class="btn btn-lg btn-success" onclick="gripperOpen()">열기</button>
+                    <button class="btn btn-lg btn-danger" onclick="gripperClose()">닫기</button>
+                </div>
+            </div>
+
+            <!-- YOLO Detection -->
+            <div class="panel">
+                <h2>🎯 YOLO Detection</h2>
+	                <div class="status-grid">
+	                    <div class="status-item"><label>X (m) (로봇 기준 좌우)</label><div class="value" id="yolo-x">--</div></div>
+	                    <div class="status-item"><label>Y (m) (로봇 기준 상하)</label><div class="value" id="yolo-y">--</div></div>
+	                    <div class="status-item"><label>Z (m) (로봇 기준 전후)</label><div class="value" id="yolo-z">--</div></div>
+	                    <div class="status-item"><label>Roll (deg)</label><div class="value" id="yolo-roll">--</div></div>
+	                    <div class="status-item"><label>Frame</label><div class="value" id="yolo-frame" style="font-size: 0.7em;">--</div></div>
+	                </div>
+	                
+	                <div style="margin-top: 8px; text-align: center;">
+	                    <span style="font-size: 0.75em; color: #888;">Selected: </span>
+	                    <span id="current-target-display" style="font-size: 0.75em; color: #00c853; font-weight: bold;">Hammer</span>
+	                    <span style="font-size: 0.75em; color: #888; margin-left: 10px;">Update: </span>
+	                    <span id="yolo-update-time" style="font-size: 0.75em; color: #00d4ff;">--</span>
+	                </div>
+
+	                <!-- 초록색 객체 선택 버튼 3개 추가 -->
+	                <div class="btn-group" style="margin-top: 10px;">
+	                    <button id="btn-hammer" class="btn btn-sm btn-success active-target" onclick="changeYoloTarget('hammer')" style="flex: 1;">Hammer</button>
+	                    <button id="btn-pliers" class="btn btn-sm btn-success" onclick="changeYoloTarget('pliers')" style="flex: 1;">Pliers</button>
+	                    <button id="btn-screwdriver" class="btn btn-sm btn-success" onclick="changeYoloTarget('screwdriver')" style="flex: 1;">Screwdriver</button>
+	                </div>
+
+	                <div class="btn-group" style="margin-top: 8px;">
+	                    <button class="btn btn-sm btn-primary" onclick="estimateThinPart()" style="width: 100%;">좌표 계산</button>
+	                    <button class="btn btn-sm btn-primary" onclick="copyYoloToTarget()" style="width: 100%;">좌표 복사 → Pick&Place</button>
+	                </div>
+	            </div>
+
+            <!-- Pick & Place -->
+            <div class="panel">
+                <h2>📦 Pick & Place</h2>
+                <div class="input-group">
+                    <label>X<input type="number" id="target-x" value="0.0" step="0.01"></label>
+                    <label>Y<input type="number" id="target-y" value="0.0" step="0.01"></label>
+                    <label>Z<input type="number" id="target-z" value="0.3" step="0.01"></label>
+                    <label>Frame
+                        <select id="target-frame">
+                            <option value="base_link" selected>base_link</option>
+                            <option value="d405_optical_frame">d405_optical_frame</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="sendTargetPoint()">목표 전송</button>
+                    <button class="btn btn-success" onclick="startPickPlace()">Pick & Place</button>
+                </div>
+            </div>
+
+            <!-- Joint States -->
+            <div class="panel">
+                <h2>📊 Joint States</h2>
+                <div class="status-grid">
+                    <div class="status-item"><label>J1 (Base)</label><div class="value" id="joint1">--</div></div>
+                    <div class="status-item"><label>J2 (Shoulder)</label><div class="value" id="joint2">--</div></div>
+                    <div class="status-item"><label>J3 (Elbow)</label><div class="value" id="joint3">--</div></div>
+                    <div class="status-item"><label>J4 (Wrist)</label><div class="value" id="joint4">--</div></div>
+                    <div class="status-item"><label>J5 (Wrist)</label><div class="value" id="joint5">--</div></div>
+                    <div class="status-item"><label>J6 (Tool)</label><div class="value" id="joint6">--</div></div>
+                    <div class="status-item"><label>Gripper L</label><div class="value" id="gripper-l">--</div></div>
+                    <div class="status-item"><label>Gripper R</label><div class="value" id="gripper-r">--</div></div>
+                </div>
+            </div>
+
+            <!-- Log -->
+            <div class="panel">
+                <h2>📝 Log</h2>
+                <div id="log"></div>
+            </div>
+
+            <!-- Robot State Viewer -->
+            <div class="panel robot-state-panel" style="grid-column: span 2;">
+                <h2>🤖 Robot Description</h2>
+                <div id="robot-viewer">
+                    <div class="urdf-info" id="urdf-info">
+                        <div style="color: #888; text-align: center; padding: 20px;">
+                            로봇 정보 로딩 중...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // YOLO 타겟 관리
+        // ============================================================
+	        const yoloTargets = ['hammer', 'pliers', 'screwdriver'];
+	        let currentYoloTarget = 'hammer';
+	        let yoloDataStore = {
+	            hammer: { x: null, y: null, z: null, roll: null, frame: "--", time: "--" },
+	            pliers: { x: null, y: null, z: null, roll: null, frame: "--", time: "--" },
+	            screwdriver: { x: null, y: null, z: null, roll: null, frame: "--", time: "--" }
+	        };
+
+	        const targetNames = {
+	            hammer: "Hammer",
+	            pliers: "Pliers",
+	            screwdriver: "Screwdriver"
+	        };
+
+        // ============================================================
+        // ROS Connection
+        // ============================================================
+        const ros = new ROSLIB.Ros();
+        let connected = false;
+        let topicsSubscribed = false;
+        let lastRobotDescription = '';
+        let robotDescriptionLogged = false;
+        let mobileParamWarningShown = false;
+
+        ros.on('connection', () => {
+            connected = true;
+            document.getElementById('connection-status').textContent = 'Connected';
+            document.getElementById('connection-status').className = 'connected';
+            log('ROS 연결됨', 'success');
+            subscribeTopics();
+        });
+
+        ros.on('error', (error) => { log('ROS 오류: ' + error, 'error'); });
+        ros.on('close', () => {
+            connected = false;
+            document.getElementById('connection-status').textContent = 'Disconnected';
+            document.getElementById('connection-status').className = 'disconnected';
+            log('ROS 연결 끊김', 'error');
+        });
+
+        function connect() {
+            const host = window.location.hostname || 'localhost';
+            ros.connect(`ws://${host}:9090`);
+        }
+        connect();
+
+        // ============================================================
+        // Publishers
+        // ============================================================
+        const cmdVelPub = new ROSLIB.Topic({ ros, name: '/diff_drive_controller/cmd_vel_unstamped', messageType: 'geometry_msgs/Twist' });
+        const rawCmdVelPub = new ROSLIB.Topic({ ros, name: '/cmd_vel', messageType: 'geometry_msgs/Twist' });
+        const navGoalPub = new ROSLIB.Topic({ ros, name: '/goal_pose', messageType: 'geometry_msgs/PoseStamped' });
+        const initialPosePub = new ROSLIB.Topic({ ros, name: '/initialpose', messageType: 'geometry_msgs/PoseWithCovarianceStamped' });
+        const targetPosePub = new ROSLIB.Topic({ ros, name: '/target_pose', messageType: 'geometry_msgs/PoseStamped' });
+        const executeTargetPub = new ROSLIB.Topic({ ros, name: '/execute_target_pose', messageType: 'std_msgs/Empty' });
+        const jointTrajPub = new ROSLIB.Topic({ ros, name: '/joint_trajectory_controller/joint_trajectory', messageType: 'trajectory_msgs/JointTrajectory' });
+        const gripperCommandPub = new ROSLIB.Topic({ ros, name: '/web/gripper_command', messageType: 'std_msgs/Float64' });
+        const armJointNames = [
+            'shoulder_pan_joint',
+            'shoulder_lift_joint',
+            'elbow_joint',
+            'wrist_1_joint',
+            'wrist_2_joint',
+            'wrist_3_joint'
+        ];
+
+        // ============================================================
+        // Joint Teleop - Button Hold (현재 조인트 값에서 delta 만큼 이동)
+        // ============================================================
+        let jogInterval = null;
+        const jogStep = 0.02; // rad per step
+        let currentJointPositions = [0, 0, 0, 0, 0, 0]; // 현재 조인트 값 저장
+
+        function startJog(jointIdx, direction) {
+            stopJog();
+            // Immediate first command
+            sendJogCommand(jointIdx, direction);
+            // Then repeat
+            jogInterval = setInterval(() => {
+                sendJogCommand(jointIdx, direction);
+            }, 100);
+        }
+
+        function sendJogCommand(jointIdx, direction) {
+            // 현재 조인트 값에서 delta만큼 이동
+            const newPositions = [...currentJointPositions];
+            newPositions[jointIdx] += direction * jogStep;
+
+            // arm_controller에 trajectory 발행
+            const traj = new ROSLIB.Message({
+                joint_names: armJointNames,
+                points: [{
+                    positions: newPositions,
+                    time_from_start: { sec: 0, nanosec: 200000000 } // 0.2초
+                }]
+            });
+            jointTrajPub.publish(traj);
+
+            // 현재 값 업데이트 (실제 피드백 전까지 예상값 사용)
+            currentJointPositions = newPositions;
+        }
+
+        function stopJog() {
+            if (jogInterval) {
+                clearInterval(jogInterval);
+                jogInterval = null;
+            }
+        }
+
+        // ============================================================
+        // Arm Poses
+        // ============================================================
+        function sendArmTrajectory(positions, duration = 3) {
+            const traj = new ROSLIB.Message({
+                joint_names: armJointNames,
+                points: [{
+                    positions: positions,
+                    time_from_start: { sec: duration, nanosec: 0 }
+                }]
+            });
+            jointTrajPub.publish(traj);
+        }
+
+        function moveToReady() {
+            sendArmTrajectory([0.0, 0.5901, -1.9266, 1.3538, 0.0, 0.0]);
+            log('Ready 자세로 이동', 'info');
+        }
+
+        function moveToPlace() {
+            sendArmTrajectory([0.0, -0.0700, -2.4870, 1.3538, 0.0, 0.0]);
+            log('Place 자세로 이동', 'info');
+        }
+
+        function moveToHome() {
+            sendArmTrajectory([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+            log('Home 자세로 이동', 'info');
+        }
+
+        // ============================================================
+        // Gripper
+        // ============================================================
+        const GRIPPER_CLOSE_POSITION = 0.020;
+        const GRIPPER_OPEN_POSITION = 0.030;
+
+        function clampGripperPosition(position) {
+            return Math.min(GRIPPER_OPEN_POSITION, Math.max(GRIPPER_CLOSE_POSITION, position));
+        }
+
+        function callGripper(position, label) {
+            const target = clampGripperPosition(position);
+            gripperCommandPub.publish(new ROSLIB.Message({ data: target }));
+            log('그리퍼 명령: ' + label + ' (' + target.toFixed(3) + 'm)', 'info');
+        }
+
+        function gripperOpen() { callGripper(GRIPPER_OPEN_POSITION, '열기'); }
+        function gripperClose() { callGripper(GRIPPER_CLOSE_POSITION, '닫기'); }
+
+        // ============================================================
+        // Pick & Place
+        // ============================================================
+        function sendTargetPoint() {
+            const x = parseFloat(document.getElementById('target-x').value);
+            const y = parseFloat(document.getElementById('target-y').value);
+            const z = parseFloat(document.getElementById('target-z').value);
+            const frame = document.getElementById('target-frame').value || 'base_link';
+            targetPosePub.publish(new ROSLIB.Message({
+                header: { stamp: { sec: 0, nanosec: 0 }, frame_id: frame },
+                pose: {
+                    position: { x, y, z },
+                    orientation: { x: 0, y: 0, z: 0, w: 0 }
+                }
+            }));
+            log(`목표 preview 전송: frame=${frame} (${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})`, 'info');
+        }
+
+		        function startPickPlace() {
+		            executeTargetPub.publish(new ROSLIB.Message({}));
+		            log('저장된 목표 plan 실행 요청...', 'info');
+		        }
+
+	        function estimateThinPart() {
+	            const estimateService = new ROSLIB.Service({
+	                ros: ros,
+	                name: '/thin_part/estimate',
+	                serviceType: 'std_srvs/srv/Trigger'
+	            });
+
+	            const request = new ROSLIB.ServiceRequest({});
+	            estimateService.callService(request, function(response) {
+	                if (response.success) {
+	                    log(response.message, 'success');
+	                } else {
+	                    log(response.message, 'error');
+	                }
+	            });
+
+	            log('YOLO grasp 좌표 계산 요청...', 'info');
+	        }
+
+        function copyYoloToTarget() {
+            const data = yoloDataStore[currentYoloTarget];
+            if (data.x !== null) {
+                document.getElementById('target-x').value = data.x.toFixed(3);
+                document.getElementById('target-y').value = data.y.toFixed(3);
+                document.getElementById('target-z').value = data.z.toFixed(3);
+                document.getElementById('target-frame').value = data.frame || 'd405_optical_frame';
+                log(`${targetNames[currentYoloTarget]} 좌표 복사됨`, 'success');
+            } else {
+                log('YOLO 좌표 없음', 'error');
+            }
+        }
+
+        function changeYoloTarget(target) {
+            currentYoloTarget = target;
+            
+	            yoloTargets.forEach(t => document.getElementById(`btn-${t}`).classList.remove('active-target'));
+	            document.getElementById(`btn-${target}`).classList.add('active-target');
+            
+            // 표시 이름 업데이트
+            document.getElementById('current-target-display').textContent = targetNames[target];
+            
+            log(`타겟 변경: ${targetNames[target]}`, 'info');
+            updateYoloUI();
+        }
+
+        function updateYoloUI() {
+            const data = yoloDataStore[currentYoloTarget];
+            if (data.x !== null) {
+	                document.getElementById('yolo-x').textContent = data.x.toFixed(3);
+	                document.getElementById('yolo-y').textContent = data.y.toFixed(3);
+	                document.getElementById('yolo-z').textContent = data.z.toFixed(3);
+	                document.getElementById('yolo-roll').textContent = data.roll !== null ? data.roll.toFixed(1) : "--";
+	                document.getElementById('yolo-frame').textContent = data.frame;
+	                document.getElementById('yolo-update-time').textContent = data.time;
+	                window.lastYoloPoint = { x: data.x, y: data.y, z: data.z };
+            } else {
+	                document.getElementById('yolo-x').textContent = "--";
+	                document.getElementById('yolo-y').textContent = "--";
+	                document.getElementById('yolo-z').textContent = "--";
+	                document.getElementById('yolo-roll').textContent = "--";
+	                document.getElementById('yolo-frame').textContent = "--";
+	                document.getElementById('yolo-update-time').textContent = "--";
+	            }
+        }
+
+        // ============================================================
+        // Joystick
+        // ============================================================
+        const joystick = document.getElementById('joystick');
+        const handle = document.getElementById('joystick-handle');
+        let isDragging = false;
+        let centerX, centerY, maxDist;
+        
+        // 속도 설정 변수
+        let maxLinearSpeed = 0.5;
+        let maxAngularSpeed = 1.0;
+
+        function initJoystick() {
+            const rect = joystick.getBoundingClientRect();
+            centerX = rect.width / 2;
+            centerY = rect.height / 2;
+            maxDist = rect.width / 2 - 22;
+        }
+
+        handle.addEventListener('mousedown', () => { isDragging = true; });
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const rect = joystick.getBoundingClientRect();
+            let x = e.clientX - rect.left - centerX;
+            let y = e.clientY - rect.top - centerY;
+            const dist = Math.sqrt(x*x + y*y);
+            if (dist > maxDist) { x = x * maxDist / dist; y = y * maxDist / dist; }
+            handle.style.left = (centerX + x) + 'px';
+            handle.style.top = (centerY + y) + 'px';
+            const linear = -y / maxDist * maxLinearSpeed;
+            const angular = -x / maxDist * maxAngularSpeed;
+            document.getElementById('linear-vel').textContent = linear.toFixed(2);
+            document.getElementById('angular-vel').textContent = angular.toFixed(2);
+            cmdVelPub.publish(new ROSLIB.Message({
+                linear: { x: linear, y: 0, z: 0 },
+                angular: { x: 0, y: 0, z: angular }
+            }));
+        });
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                handle.style.left = '50%'; handle.style.top = '50%';
+                handle.style.transform = 'translate(-50%, -50%)';
+                document.getElementById('linear-vel').textContent = '0.00';
+                document.getElementById('angular-vel').textContent = '0.00';
+                cmdVelPub.publish(new ROSLIB.Message({
+                    linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 }
+                }));
+            }
+        });
+
+        // Touch support for joystick
+        handle.addEventListener('touchstart', (e) => { isDragging = true; e.preventDefault(); });
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const touch = e.touches[0];
+            const rect = joystick.getBoundingClientRect();
+            let x = touch.clientX - rect.left - centerX;
+            let y = touch.clientY - rect.top - centerY;
+            const dist = Math.sqrt(x*x + y*y);
+            if (dist > maxDist) { x = x * maxDist / dist; y = y * maxDist / dist; }
+            handle.style.left = (centerX + x) + 'px';
+            handle.style.top = (centerY + y) + 'px';
+            const linear = -y / maxDist * maxLinearSpeed;
+            const angular = -x / maxDist * maxAngularSpeed;
+            document.getElementById('linear-vel').textContent = linear.toFixed(2);
+            document.getElementById('angular-vel').textContent = angular.toFixed(2);
+            cmdVelPub.publish(new ROSLIB.Message({
+                linear: { x: linear, y: 0, z: 0 },
+                angular: { x: 0, y: 0, z: angular }
+            }));
+        });
+        document.addEventListener('touchend', () => {
+            if (isDragging) {
+                isDragging = false;
+                handle.style.left = '50%'; handle.style.top = '50%';
+                document.getElementById('linear-vel').textContent = '0.00';
+                document.getElementById('angular-vel').textContent = '0.00';
+                cmdVelPub.publish(new ROSLIB.Message({
+                    linear: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 }
+                }));
+            }
+        });
+
+        // ============================================================
+        // Speed/Acceleration Settings
+        // ============================================================
+        function updateSpeedSettings() {
+            const maxSpeed = parseFloat(document.getElementById('max-speed-slider').value);
+            const accel = parseFloat(document.getElementById('accel-slider').value);
+            const maxAng = parseFloat(document.getElementById('max-angular-slider').value);
+            
+            document.getElementById('max-speed-val').textContent = maxSpeed.toFixed(1) + ' m/s';
+            document.getElementById('accel-val').textContent = accel.toFixed(1) + ' m/s²';
+            document.getElementById('max-angular-val').textContent = maxAng.toFixed(1) + ' rad/s';
+            
+            // 조이스틱 최대 속도 업데이트
+            maxLinearSpeed = maxSpeed;
+            maxAngularSpeed = maxAng;
+        }
+        
+        function applySpeedSettings() {
+            const maxSpeed = parseFloat(document.getElementById('max-speed-slider').value);
+            const accel = parseFloat(document.getElementById('accel-slider').value);
+            const maxAng = parseFloat(document.getElementById('max-angular-slider').value);
+
+            ros.getServices((services) => {
+                const serviceName = '/diff_drive_controller/set_parameters';
+                if (!services.includes(serviceName)) {
+                    if (!mobileParamWarningShown) {
+                        log('모바일 컨트롤러 없음: 속도 값은 UI에만 적용됨', 'warning');
+                        mobileParamWarningShown = true;
+                    }
+                    return;
+                }
+
+                const setParamService = new ROSLIB.Service({
+                    ros: ros,
+                    name: serviceName,
+                    serviceType: 'rcl_interfaces/srv/SetParameters'
+                });
+
+                const params = [
+                    { name: 'linear.x.max_velocity', value: { type: 3, double_value: maxSpeed } },
+                    { name: 'linear.x.min_velocity', value: { type: 3, double_value: -maxSpeed } },
+                    { name: 'linear.x.max_acceleration', value: { type: 3, double_value: accel } },
+                    { name: 'linear.x.min_acceleration', value: { type: 3, double_value: -accel } },
+                    { name: 'angular.z.max_velocity', value: { type: 3, double_value: maxAng } },
+                    { name: 'angular.z.min_velocity', value: { type: 3, double_value: -maxAng } },
+                    { name: 'angular.z.max_acceleration', value: { type: 3, double_value: accel * 2 } },
+                    { name: 'angular.z.min_acceleration', value: { type: 3, double_value: -accel * 2 } }
+                ];
+
+                const request = new ROSLIB.ServiceRequest({ parameters: params });
+
+                setParamService.callService(request, function(response) {
+                    let allSuccess = true;
+                    response.results.forEach((r, i) => {
+                        if (!r.successful) {
+                            allSuccess = false;
+                            log(`파라미터 설정 실패: ${params[i].name}`, 'error');
+                        }
+                    });
+                    if (allSuccess) {
+                        log(`속도 설정 적용: ${maxSpeed}m/s, 가속도: ${accel}m/s²`, 'success');
+                    }
+                }, function(error) {
+                    log('파라미터 서비스 호출 실패: ' + error, 'error');
+                });
+            }, () => {
+                if (!mobileParamWarningShown) {
+                    log('서비스 목록 확인 실패: 속도 값은 UI에만 적용됨', 'warning');
+                    mobileParamWarningShown = true;
+                }
+            });
+        }
+        
+        function resetSpeedSettings() {
+            document.getElementById('max-speed-slider').value = 0.2;
+            document.getElementById('accel-slider').value = 0.1;
+            document.getElementById('max-angular-slider').value = 0.5;
+            updateSpeedSettings();
+            applySpeedSettings();
+            log('속도 설정 초기화', 'info');
+        }
+
+        // ============================================================
+        // Mobile Navigation
+        // ============================================================
+        let lastOdomPose = null;
+        let navStatusText = '--';
+        const requiredMobileTopics = {
+            '/diff_drive_controller/cmd_vel_unstamped': 'topic-diff-cmd',
+            '/diff_drive_controller/odom': 'topic-odom',
+            '/odometry/filtered': 'topic-filtered',
+            '/goal_pose': 'topic-goal',
+            '/map_static': 'topic-map',
+            '/scan': 'topic-scan',
+            '/livox/lidar': 'topic-livox',
+            '/navigate_to_pose/_action/status': 'topic-nav-status'
+        };
+
+        function yawToQuaternion(yawRad) {
+            return { x: 0, y: 0, z: Math.sin(yawRad / 2), w: Math.cos(yawRad / 2) };
+        }
+
+        function quaternionToYaw(q) {
+            return Math.atan2(
+                2.0 * (q.w * q.z + q.x * q.y),
+                1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            );
+        }
+
+        function navPoseFromInputs() {
+            const x = parseFloat(document.getElementById('nav-goal-x').value);
+            const y = parseFloat(document.getElementById('nav-goal-y').value);
+            const yawDeg = parseFloat(document.getElementById('nav-goal-yaw').value);
+            return {
+                x: Number.isFinite(x) ? x : 0,
+                y: Number.isFinite(y) ? y : 0,
+                yawRad: (Number.isFinite(yawDeg) ? yawDeg : 0) * Math.PI / 180.0
+            };
+        }
+
+        function sendNavGoal() {
+            const pose = navPoseFromInputs();
+            const q = yawToQuaternion(pose.yawRad);
+            navGoalPub.publish(new ROSLIB.Message({
+                header: { stamp: { sec: 0, nanosec: 0 }, frame_id: 'map' },
+                pose: {
+                    position: { x: pose.x, y: pose.y, z: 0 },
+                    orientation: q
+                }
+            }));
+            log(`Nav goal 전송: (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)}, ${(pose.yawRad * 180 / Math.PI).toFixed(1)}deg)`, 'info');
+        }
+
+        function sendInitialPose() {
+            const pose = navPoseFromInputs();
+            const q = yawToQuaternion(pose.yawRad);
+            initialPosePub.publish(new ROSLIB.Message({
+                header: { stamp: { sec: 0, nanosec: 0 }, frame_id: 'map' },
+                pose: {
+                    pose: {
+                        position: { x: pose.x, y: pose.y, z: 0 },
+                        orientation: q
+                    },
+                    covariance: [
+                        0.25, 0, 0, 0, 0, 0,
+                        0, 0.25, 0, 0, 0, 0,
+                        0, 0, 0.0, 0, 0, 0,
+                        0, 0, 0, 0.0, 0, 0,
+                        0, 0, 0, 0, 0.0, 0,
+                        0, 0, 0, 0, 0, 0.0685
+                    ]
+                }
+            }));
+            log(`초기 위치 전송: (${pose.x.toFixed(2)}, ${pose.y.toFixed(2)})`, 'info');
+        }
+
+        function stopNavigation() {
+            const zero = new ROSLIB.Message({
+                linear: { x: 0, y: 0, z: 0 },
+                angular: { x: 0, y: 0, z: 0 }
+            });
+            const cancelService = new ROSLIB.Service({
+                ros: ros,
+                name: '/navigate_to_pose/_action/cancel_goal',
+                serviceType: 'action_msgs/srv/CancelGoal'
+            });
+            const emptyGoalId = new Array(16).fill(0);
+            cancelService.callService(new ROSLIB.ServiceRequest({
+                goal_info: {
+                    goal_id: { uuid: emptyGoalId },
+                    stamp: { sec: 0, nanosec: 0 }
+                }
+            }));
+            rawCmdVelPub.publish(zero);
+            cmdVelPub.publish(zero);
+            log('모바일 정지 명령 전송', 'warning');
+        }
+
+        function updateTopicPill(topic, active) {
+            const elem = document.getElementById(requiredMobileTopics[topic]);
+            if (!elem) return;
+            elem.classList.toggle('active', active);
+            elem.classList.toggle('missing', !active);
+        }
+
+        function pollMobileTopics() {
+            if (!connected) return;
+            ros.getTopics((result) => {
+                const topicList = Array.isArray(result) ? result : (result.topics || []);
+                Object.keys(requiredMobileTopics).forEach((topic) => {
+                    updateTopicPill(topic, topicList.includes(topic));
+                });
+                const hasMap = topicList.includes('/map_static') || topicList.includes('/map');
+                const hasScan = topicList.includes('/scan');
+                const hasNav = topicList.includes('/navigate_to_pose/_action/status');
+                const mapPill = document.getElementById('topic-map');
+                if (mapPill) {
+                    mapPill.classList.toggle('active', hasMap);
+                    mapPill.classList.toggle('missing', !hasMap);
+                }
+                setStatusText('map-state', hasMap ? 'OK' : '--', hasMap ? 'status-ok' : 'status-warn');
+                setStatusText('scan-state', hasScan ? 'OK' : '--', hasScan ? 'status-ok' : 'status-warn');
+                if (navStatusText === '--') {
+                    setStatusText('nav2-state', hasNav ? 'READY' : '--', hasNav ? 'status-ok' : 'status-warn');
+                }
+            });
+        }
+
+        function setStatusText(id, text, className) {
+            const elem = document.getElementById(id);
+            if (!elem) return;
+            elem.textContent = text;
+            elem.className = `value ${className || ''}`;
+        }
+
+        function updateMobileOdom(msg) {
+            const pose = msg.pose && msg.pose.pose ? msg.pose.pose : null;
+            if (!pose) return;
+            const x = pose.position.x || 0;
+            const y = pose.position.y || 0;
+            const yaw = quaternionToYaw(pose.orientation || { x: 0, y: 0, z: 0, w: 1 });
+            lastOdomPose = { x, y, yaw };
+            setStatusText('odom-x', x.toFixed(3), 'status-ok');
+            setStatusText('odom-y', y.toFixed(3), 'status-ok');
+            setStatusText('odom-yaw', (yaw * 180 / Math.PI).toFixed(1) + 'deg', 'status-ok');
+        }
+
+        function updateNavStatus(msg) {
+            const list = msg.status_list || [];
+            if (list.length === 0) {
+                navStatusText = 'READY';
+                setStatusText('nav2-state', navStatusText, 'status-ok');
+                return;
+            }
+            const latest = list[list.length - 1];
+            const labels = {
+                0: 'UNKNOWN',
+                1: 'ACCEPTED',
+                2: 'EXECUTING',
+                3: 'CANCELING',
+                4: 'SUCCEEDED',
+                5: 'CANCELED',
+                6: 'ABORTED'
+            };
+            navStatusText = labels[latest.status] || String(latest.status);
+            const cls = latest.status === 4 ? 'status-ok' :
+                (latest.status === 5 || latest.status === 6 ? 'status-bad' : 'status-warn');
+                setStatusText('nav2-state', navStatusText, cls);
+            }
+
+        function updateEndEffectorPose(msg) {
+            const pose = msg.pose || {};
+            const position = pose.position || {};
+            if (!Number.isFinite(position.x) ||
+                !Number.isFinite(position.y) ||
+                !Number.isFinite(position.z)) {
+                return;
+            }
+            setStatusText('ee-x', position.x.toFixed(3), 'status-ok');
+            setStatusText('ee-y', position.y.toFixed(3), 'status-ok');
+            setStatusText('ee-z', position.z.toFixed(3), 'status-ok');
+            setStatusText('ee-frame', msg.header && msg.header.frame_id ? msg.header.frame_id : '--', 'status-ok');
+        }
+
+        // ============================================================
+        // Subscribers
+        // ============================================================
+        function subscribeTopics() {
+            if (topicsSubscribed) return;
+            topicsSubscribed = true;
+
+            // Joint States
+            const jointStateSub = new ROSLIB.Topic({ ros, name: '/joint_states', messageType: 'sensor_msgs/JointState' });
+            jointStateSub.subscribe((msg) => {
+                const joints = {};
+                msg.name.forEach((name, i) => { joints[name] = msg.position[i]; });
+                
+                // 현재 조인트 값 업데이트 (조인트 텔레옵용)
+                if (joints['shoulder_pan_joint'] !== undefined) {
+                    currentJointPositions[0] = joints['shoulder_pan_joint'];
+                    document.getElementById('joint1').textContent = joints['shoulder_pan_joint'].toFixed(3);
+                    document.getElementById('j1-val').textContent = joints['shoulder_pan_joint'].toFixed(3);
+                }
+                if (joints['shoulder_lift_joint'] !== undefined) {
+                    currentJointPositions[1] = joints['shoulder_lift_joint'];
+                    document.getElementById('joint2').textContent = joints['shoulder_lift_joint'].toFixed(3);
+                    document.getElementById('j2-val').textContent = joints['shoulder_lift_joint'].toFixed(3);
+                }
+                if (joints['elbow_joint'] !== undefined) {
+                    currentJointPositions[2] = joints['elbow_joint'];
+                    document.getElementById('joint3').textContent = joints['elbow_joint'].toFixed(3);
+                    document.getElementById('j3-val').textContent = joints['elbow_joint'].toFixed(3);
+                }
+                if (joints['wrist_1_joint'] !== undefined) {
+                    currentJointPositions[3] = joints['wrist_1_joint'];
+                    document.getElementById('joint4').textContent = joints['wrist_1_joint'].toFixed(3);
+                    document.getElementById('j4-val').textContent = joints['wrist_1_joint'].toFixed(3);
+                }
+                if (joints['wrist_2_joint'] !== undefined) {
+                    currentJointPositions[4] = joints['wrist_2_joint'];
+                    document.getElementById('joint5').textContent = joints['wrist_2_joint'].toFixed(3);
+                    document.getElementById('j5-val').textContent = joints['wrist_2_joint'].toFixed(3);
+                }
+                if (joints['wrist_3_joint'] !== undefined) {
+                    currentJointPositions[5] = joints['wrist_3_joint'];
+                    document.getElementById('joint6').textContent = joints['wrist_3_joint'].toFixed(3);
+                    document.getElementById('j6-val').textContent = joints['wrist_3_joint'].toFixed(3);
+                }
+                if (joints['gripper_left_joint'] !== undefined) {
+                    document.getElementById('gripper-l').textContent = joints['gripper_left_joint'].toFixed(3);
+                    if (joints['gripper_right_joint'] === undefined)
+                        document.getElementById('gripper-r').textContent = joints['gripper_left_joint'].toFixed(3);
+                }
+                if (joints['gripper_right_joint'] !== undefined)
+                    document.getElementById('gripper-r').textContent = joints['gripper_right_joint'].toFixed(3);
+            });
+
+            // Pick & Place Status
+            const statusSub = new ROSLIB.Topic({ ros, name: '/pick_place_status', messageType: 'std_msgs/String' });
+            statusSub.subscribe((msg) => { log(msg.data, 'info'); });
+
+            // Robot Description
+            const robotDescSub = new ROSLIB.Topic({ ros, name: '/robot_description', messageType: 'std_msgs/String' });
+            robotDescSub.subscribe((msg) => {
+                parseAndDisplayURDF(msg.data);
+            });
+
+            // Also try to get robot_description from parameter
+            const robotDescParam = new ROSLIB.Param({ ros, name: '/robot_description' });
+            robotDescParam.get((value) => {
+                if (value) {
+                    parseAndDisplayURDF(value);
+                }
+            });
+
+            const odomSub = new ROSLIB.Topic({
+                ros: ros,
+                name: '/diff_drive_controller/odom',
+                messageType: 'nav_msgs/Odometry',
+                throttle_rate: 200
+            });
+            odomSub.subscribe((msg) => {
+                updateMobileOdom(msg);
+            });
+
+            const filteredOdomSub = new ROSLIB.Topic({
+                ros: ros,
+                name: '/odometry/filtered',
+                messageType: 'nav_msgs/Odometry',
+                throttle_rate: 200
+            });
+            filteredOdomSub.subscribe((msg) => {
+                updateMobileOdom(msg);
+            });
+
+            const navStatusSub = new ROSLIB.Topic({
+                ros: ros,
+                name: '/navigate_to_pose/_action/status',
+                messageType: 'action_msgs/GoalStatusArray',
+                throttle_rate: 500
+            });
+            navStatusSub.subscribe((msg) => {
+                updateNavStatus(msg);
+            });
+
+            const eePoseSub = new ROSLIB.Topic({
+                ros: ros,
+                name: '/gripper_center_pose',
+                messageType: 'geometry_msgs/PoseStamped',
+                throttle_rate: 100
+            });
+            eePoseSub.subscribe((msg) => {
+                updateEndEffectorPose(msg);
+            });
+
+            const planSub = new ROSLIB.Topic({
+                ros: ros,
+                name: '/plan',
+                messageType: 'nav_msgs/Path',
+                throttle_rate: 500
+            });
+            planSub.subscribe((msg) => {
+                if (msg.poses && msg.poses.length > 0) {
+                    navStatusText = `PLAN ${msg.poses.length}`;
+                    setStatusText('nav2-state', navStatusText, 'status-ok');
+                }
+            });
+
+            pollMobileTopics();
+            setInterval(pollMobileTopics, 3000);
+
+	            // YOLO Target Point - 3개 객체별 구독
+	            yoloTargets.forEach(t => {
+	                const sub = new ROSLIB.Topic({
+	                    ros: ros,
+	                    name: `/${t}_target_point`,
+                    messageType: 'geometry_msgs/PointStamped',
+                    throttle_rate: 100
+                });
+
+                sub.subscribe((msg) => {
+	                    yoloDataStore[t] = {
+	                        x: msg.point.x,
+	                        y: msg.point.y,
+	                        z: msg.point.z,
+	                        roll: yoloDataStore[t].roll,
+	                        frame: msg.header.frame_id,
+	                        time: new Date().toLocaleTimeString()
+	                    };
+                    if (currentYoloTarget === t) {
+                        updateYoloUI();
+	                    }
+	                });
+	            });
+
+	            const graspInfoSub = new ROSLIB.Topic({
+	                ros: ros,
+	                name: '/thin_part/grasp_info',
+	                messageType: 'std_msgs/Float32MultiArray',
+	                throttle_rate: 100
+	            });
+	            graspInfoSub.subscribe((msg) => {
+	                if (!msg.data || msg.data.length < 16) return;
+	                const clsId = Math.round(msg.data[0]);
+	                const target = yoloTargets[clsId];
+	                if (!target) return;
+	                yoloDataStore[target] = {
+	                    x: msg.data[13],
+	                    y: msg.data[14],
+	                    z: msg.data[15],
+	                    roll: msg.data[8],
+	                    frame: 'd405_optical_frame',
+	                    time: new Date().toLocaleTimeString()
+	                };
+	                if (currentYoloTarget === target) {
+	                    updateYoloUI();
+	                }
+	            });
+	        }
+
+        // ============================================================
+        // URDF Parser & Display
+        // ============================================================
+        function parseAndDisplayURDF(urdfString) {
+            if (!urdfString || urdfString === lastRobotDescription) return;
+            lastRobotDescription = urdfString;
+
+            const urdfInfo = document.getElementById('urdf-info');
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(urdfString, 'text/xml');
+                const robot = xmlDoc.querySelector('robot');
+                
+                if (!robot) {
+                    urdfInfo.innerHTML = '<div style="color: #ff1744;">URDF 파싱 실패</div>';
+                    return;
+                }
+
+                const robotName = robot.getAttribute('name') || 'Unknown';
+                const links = xmlDoc.querySelectorAll('link');
+                const joints = xmlDoc.querySelectorAll('joint');
+
+                let html = `<div style="margin-bottom: 10px; color: #00d4ff; font-weight: bold;">
+                    🤖 ${robotName}
+                </div>`;
+                
+                html += `<div style="margin-bottom: 8px; color: #aaa;">
+                    Links: ${links.length} | Joints: ${joints.length}
+                </div>`;
+
+                html += '<div style="margin-bottom: 6px; color: #888; font-size: 0.9em;">📎 Links:</div>';
+                links.forEach(link => {
+                    const name = link.getAttribute('name');
+                    html += `<div class="link-item">${name}</div>`;
+                });
+
+                html += '<div style="margin: 10px 0 6px; color: #888; font-size: 0.9em;">🔗 Joints:</div>';
+                joints.forEach(joint => {
+                    const name = joint.getAttribute('name');
+                    const type = joint.getAttribute('type');
+                    const typeColor = type === 'revolute' ? '#00c853' : 
+                                     type === 'continuous' ? '#ff9100' : 
+                                     type === 'fixed' ? '#888' : '#00d4ff';
+                    html += `<div class="link-item" style="border-left-color: ${typeColor};">
+                        ${name} <span style="color: ${typeColor}; font-size: 0.85em;">[${type}]</span>
+                    </div>`;
+                });
+
+                urdfInfo.innerHTML = html;
+                if (!robotDescriptionLogged) {
+                    log('Robot Description 로드됨', 'success');
+                    robotDescriptionLogged = true;
+                }
+            } catch (e) {
+                urdfInfo.innerHTML = `<div style="color: #ff1744;">URDF 파싱 오류: ${e.message}</div>`;
+            }
+        }
+
+        // ============================================================
+        // Camera Controls
+        // ============================================================
+	        function startAllCameras() {
+	            const host = window.location.hostname || 'localhost';
+		            document.getElementById('d405-feed').src = `http://${host}:8080/stream?topic=/d405/color/image_raw&type=mjpeg&quality=50`;
+	            document.getElementById('yolo-feed').src = `http://${host}:8080/stream?topic=/yolo_seg/detection_image&type=mjpeg&quality=50`;
+            document.getElementById('d455-feed').src = `http://${host}:8080/stream?topic=/d455/color/image_raw&type=mjpeg&quality=50`;
+            log('모든 카메라 시작', 'info');
+        }
+
+        function startNavCameras() {
+            const host = window.location.hostname || 'localhost';
+            document.getElementById('d405-feed').src = `http://${host}:8080/stream?topic=/d405/color/image_raw&type=mjpeg&quality=50`;
+            document.getElementById('yolo-feed').src = `http://${host}:8080/stream?topic=/yolo_seg/detection_image&type=mjpeg&quality=50`;
+            document.getElementById('d455-feed').src = `http://${host}:8080/stream?topic=/d455/color/image_raw&type=mjpeg&quality=50`;
+            log('Nav 센서 스트림 시작', 'info');
+        }
+
+        function stopAllCameras() {
+            document.getElementById('d405-feed').src = '';
+            document.getElementById('yolo-feed').src = '';
+            document.getElementById('d455-feed').src = '';
+            log('모든 카메라 정지', 'info');
+        }
+
+        // ============================================================
+        // Log
+        // ============================================================
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.insertBefore(entry, logDiv.firstChild);
+            while (logDiv.children.length > 30) logDiv.removeChild(logDiv.lastChild);
+        }
+
+        // ============================================================
+        // Init
+        // ============================================================
+        window.onload = () => { 
+            initJoystick(); 
+            log('초기화 완료', 'success'); 
+        };
+        window.onresize = initJoystick;
+    </script>
+</body>
+</html>

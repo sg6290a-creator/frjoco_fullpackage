@@ -1,0 +1,7 @@
+<library path="qp_controller">
+  <class name="qp_controllers/QPController"
+         type="qp_controllers::QPController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>OSQP-based Cartesian IK controller with joint limit constraints</description>
+  </class>
+</library>

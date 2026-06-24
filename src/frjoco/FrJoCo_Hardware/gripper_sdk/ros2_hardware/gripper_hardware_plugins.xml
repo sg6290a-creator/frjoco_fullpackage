@@ -1,0 +1,9 @@
+<library path="gripper_hardware">
+  <class name="gripper_hardware/GripperHardwareInterface"
+         type="gripper_hardware::GripperHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Standalone U2D2/Dynamixel gripper hardware interface.
+    </description>
+  </class>
+</library>

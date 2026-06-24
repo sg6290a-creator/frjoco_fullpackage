@@ -1,0 +1,12 @@
+<class_libraries>
+  <library path="mobile_sdk_hw">
+    <class
+      name="mobile_sdk/MobileSystemInterface"
+      type="mobile_sdk_ros2::MobileSystemInterface"
+      base_class_type="hardware_interface::SystemInterface">
+      <description>
+        MD Motor 4WD hardware interface using pure C++ MDDriver.
+      </description>
+    </class>
+  </library>
+</class_libraries>

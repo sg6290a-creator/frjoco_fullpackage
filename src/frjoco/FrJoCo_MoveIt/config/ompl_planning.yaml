@@ -1,0 +1,53 @@
+# ============================================================================
+# OMPL Planning Configuration  (MoveIt 2 Humble / v2.5.x)
+# ============================================================================
+#
+# ⚠  MoveIt 2 Humble 의 PlanningPipeline 은 아래 두 파라미터만 읽는다:
+#      1) planning_plugin   — 단수(string).  "planning_plugins"(복수) 는 무시됨
+#      2) request_adapters  — space-separated string
+#    "response_adapters" 키는 MoveIt 2 Humble 에 존재하지 않음.
+#    AddTimeOptimalParameterization 은 *request_adapter* 로 등록되어 있으며
+#    어댑터 체인의 첫 번째(=outermost)에 둬야 플래너 출력 경로에
+#    최적 시간 파라미터화를 마지막 단계에서 적용한다.
+#
+# 플러그인 클래스 접두어:
+#    default_planner_request_adapters/     (Humble)
+#    ≠ default_planning_request_adapters/  (Rolling/Iron — Humble 에서 미지원)
+# ============================================================================
+
+planning_plugin: "ompl_interface/OMPLPlanner"
+
+request_adapters: >-
+  default_planner_request_adapters/AddTimeOptimalParameterization
+  default_planner_request_adapters/ResolveConstraintFrames
+  default_planner_request_adapters/FixWorkspaceBounds
+  default_planner_request_adapters/FixStartStateBounds
+  default_planner_request_adapters/FixStartStateCollision
+start_state_max_bounds_error: 0.1
+
+planner_configs:
+  RRTConnect:
+    type: geometric::RRTConnect
+    range: 0.0
+  RRTstar:
+    type: geometric::RRTstar
+    range: 0.0
+    goal_bias: 0.05
+  PRM:
+    type: geometric::PRM
+    max_nearest_neighbors: 10
+  LBKPIECE:
+    type: geometric::LBKPIECE1
+  BiTRRT:
+    type: geometric::BiTRRT
+
+arm:
+  default_planner_config: RRTConnect
+  planner_configs:
+    - RRTConnect
+    - RRTstar
+    - PRM
+    - LBKPIECE
+    - BiTRRT
+  projection_evaluator: joints(shoulder_pan_joint,shoulder_lift_joint)
+  longest_valid_segment_fraction: 0.005

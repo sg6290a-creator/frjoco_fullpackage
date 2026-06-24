@@ -1,0 +1,2 @@
+# Legacy DLS/RBDL arm controller kept for reference.
+# Excluded from default colcon builds because it depends on local RBDL/hand_sdk paths.

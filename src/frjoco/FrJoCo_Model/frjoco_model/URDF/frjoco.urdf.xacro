@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<robot name="frjoco" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ==================== MOBILE BASE ==================== -->
+  <xacro:include filename="$(find frjoco_model)/URDF/mobile_urdf/mobile_hardware.urdf.xacro"/>
+
+</robot>

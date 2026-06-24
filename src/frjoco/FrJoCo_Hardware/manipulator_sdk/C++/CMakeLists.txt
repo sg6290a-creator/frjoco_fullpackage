@@ -1,0 +1,66 @@
+cmake_minimum_required(VERSION 3.14)
+project(frlab_manipulator_sdk CXX)
+
+# ---------------------------------------------------------------------------
+# frlab_manipulator_sdk — 6DOF Manipulator SDK (Robstride03 x2 + MyActuator X4-36 x4)
+#
+# Transport: SocketCAN via CANable v2.0 (slcan/native CAN)
+#
+# Structure:
+#   include/manipulator_sdk/   — public headers
+#   src/               — implementation
+#   scripts/           — standalone test executables
+# ---------------------------------------------------------------------------
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Clang)")
+  add_compile_options(-Wall -Wextra)
+endif()
+
+# ---------------------------------------------------------------------------
+# manipulator_sdk_native — static library
+# ---------------------------------------------------------------------------
+add_library(manipulator_sdk_native STATIC
+  src/socketcan_device.cpp
+  src/rmd_protocol.cpp
+  src/robstride_protocol.cpp
+  src/integrated_driver.cpp
+  src/frlab_manipulator.cpp
+  src/sync_driver.cpp
+)
+
+set_target_properties(manipulator_sdk_native PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(manipulator_sdk_native PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_compile_features(manipulator_sdk_native PUBLIC cxx_std_17)
+
+find_package(Threads REQUIRED)
+target_link_libraries(manipulator_sdk_native PUBLIC Threads::Threads)
+
+message(STATUS "[frlab_manipulator_sdk] manipulator_sdk_native built.")
+
+# ---------------------------------------------------------------------------
+# Test / script executables
+# ---------------------------------------------------------------------------
+option(FRLAB_BUILD_SCRIPTS "Build script executables" OFF)
+
+if(FRLAB_BUILD_SCRIPTS)
+  foreach(script
+    test_frlab_manipulator
+    test_read_only
+    test_integrated
+    test_robstride
+    test_comm
+    test_socketcan
+  )
+    add_executable(${script} scripts/${script}.cpp)
+    target_link_libraries(${script} PRIVATE manipulator_sdk_native)
+    message(STATUS "[frlab_manipulator_sdk] ${script} built.")
+  endforeach()
+endif()

@@ -1,0 +1,10 @@
+<library path="frlab_manipulator_hardware">
+  <class name="frlab_manipulator_hardware/FrlabManipulatorHardware"
+         type="frlab_manipulator_hardware::FrlabManipulatorHardware"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      Hardware interface for frlab 6DOF arm.
+      Communicates via SocketCAN (Robstride03 x2 + MyActuator X4-36 x4).
+    </description>
+  </class>
+</library>
