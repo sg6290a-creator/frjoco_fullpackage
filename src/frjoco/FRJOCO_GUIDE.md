@@ -1,19 +1,38 @@
 # FrJoCo Fullpackage Guide
 
-현재 기준 워크스페이스:
+이 문서는 clone 위치를 `FRJOCO_WS`로 둡니다. 예시는 `~/frjoco_ws`입니다.
 
-```text
-/home/frlab/ing_ws/src/fullpackage
+```bash
+export FRJOCO_WS="$HOME/frjoco_ws"
 ```
 
 `build/`, `install/`, `log/`는 git에 포함하지 않습니다.
 
-## 1. Source
+## 1. Workspace Setup
+
+처음 받는 경우:
+
+```bash
+export FRJOCO_WS="$HOME/frjoco_ws"
+mkdir -p "$(dirname "$FRJOCO_WS")"
+git clone https://github.com/sg6290a-creator/frjoco_fullpackage.git "$FRJOCO_WS"
+cd "$FRJOCO_WS"
+```
+
+이미 다른 위치에 clone한 경우:
+
+```bash
+cd /path/to/frjoco_fullpackage
+export FRJOCO_WS="$(pwd)"
+```
+
+## 2. Source
 
 새 터미널마다:
 
 ```bash
-cd /home/frlab/ing_ws/src/fullpackage
+export FRJOCO_WS="$HOME/frjoco_ws"
+cd "$FRJOCO_WS"
 source /opt/ros/humble/setup.bash
 source install/local_setup.bash
 ```
@@ -27,12 +46,12 @@ ros2 pkg prefix frjoco_bringup
 기대값:
 
 ```text
-/home/frlab/ing_ws/src/fullpackage/install/frjoco_bringup
+$FRJOCO_WS/install/frjoco_bringup
 ```
 
 `dynamixel_sdk`는 fullpackage 내부 `src/frjoco/FrJoCo_Hardware/third_party/dynamixel_sdk`에 포함되어 있습니다.
 
-## 2. Hardware Prep
+## 3. Hardware Prep
 
 ### Arm CAN
 
@@ -131,25 +150,33 @@ ls -l /dev/serial/by-path/
 lsusb | grep -i -E 'intel|realsense'
 ```
 
-현재 기본 YOLO weight:
+workspace에 포함된 YOLO weight:
 
 ```text
-/home/frlab/Downloads/yolo_26/result/sam3_finetune_rot50_e20_plus80_retry/weights/best.pt
+$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt
 ```
 
-launch에서 바꿀 때:
+launch 전에 변수로 잡아두면 편합니다.
 
 ```bash
-model_path:=/path/to/best.pt
+export YOLO_MODEL_PATH="$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt"
 ```
 
-## 3. Build
+다른 weight를 쓸 때는 원하는 파일로 바꿉니다.
+
+```bash
+export YOLO_MODEL_PATH="/path/to/best.pt"
+```
+
+## 4. Build
 
 전체 빌드:
 
 ```bash
-cd /home/frlab/ing_ws/src/fullpackage
+cd "$FRJOCO_WS"
 source /opt/ros/humble/setup.bash
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
 source install/local_setup.bash
 ```
@@ -162,11 +189,13 @@ colcon build --symlink-install \
   --cmake-args -DBUILD_TESTING=OFF
 ```
 
-## 4. Main Launch
+## 5. Main Launch
 
 팔, 그리퍼, 카메라, YOLO, 웹 UI, MoveIt executor:
 
 ```bash
+export YOLO_MODEL_PATH="$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt"
+
 ros2 launch frjoco_bringup main.launch.py \
   enable_arm_hardware:=true \
   enable_mobile_hardware:=false \
@@ -179,12 +208,15 @@ ros2 launch frjoco_bringup main.launch.py \
   enable_nav_sensors:=false \
   enable_nav2:=false \
   enable_rtab_livox:=false \
+  model_path:="$YOLO_MODEL_PATH" \
   rviz:=true
 ```
 
 모바일까지 포함:
 
 ```bash
+export YOLO_MODEL_PATH="$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt"
+
 ros2 launch frjoco_bringup main.launch.py \
   enable_arm_hardware:=true \
   enable_mobile_hardware:=true \
@@ -194,6 +226,7 @@ ros2 launch frjoco_bringup main.launch.py \
   enable_web:=true \
   enable_move_executor:=true \
   enable_hardware_status:=true \
+  model_path:="$YOLO_MODEL_PATH" \
   rviz:=true
 ```
 
@@ -221,7 +254,7 @@ ros2 launch frjoco_bringup main.launch.py \
   enable_nav2:=true
 ```
 
-## 5. Single Launches
+## 6. Single Launches
 
 ```bash
 ros2 launch frjoco_bringup arm.launch.py
@@ -230,7 +263,7 @@ ros2 launch frjoco_bringup mobile.launch.py
 ros2 launch frjoco_bringup sensors.launch.py
 ```
 
-## 6. Simulation
+## 7. Simulation
 
 ```bash
 ros2 launch frjoco_bringup main_sim.launch.py
@@ -240,7 +273,7 @@ ros2 launch frjoco_bringup mobile_sim.launch.py
 
 시뮬레이션은 하드웨어 없이 `/joint_states`, MoveIt, RViz, web UI, Nav2 흐름 확인용입니다.
 
-## 7. Web UI
+## 8. Web UI
 
 `enable_web:=true`면 자동 실행됩니다.
 
@@ -254,7 +287,7 @@ http://localhost:8000
 ros2 launch robot_web_interface web_interface.launch.py
 ```
 
-## 8. Runtime Flow
+## 9. Runtime Flow
 
 ```text
 Arm CAN
@@ -281,7 +314,7 @@ D405/D455 + YOLO
   -> MoveIt plan/execute
 ```
 
-## 9. Pick And Place
+## 10. Pick And Place
 
 현재 `vision_move.py` 기준 흐름:
 
@@ -325,7 +358,7 @@ pre_open_after_place_delay_sec:=1.5
 carry_elbow_extra_bend_deg:=6.0
 ```
 
-## 10. Quick Checks
+## 11. Quick Checks
 
 컨트롤러:
 
@@ -359,7 +392,7 @@ Nav2:
 ros2 topic list | grep -E 'map|scan|odom|goal_pose|cmd_vel'
 ```
 
-## 11. Package Roles
+## 12. Package Roles
 
 | package | role |
 | --- | --- |
@@ -375,7 +408,7 @@ ros2 topic list | grep -E 'map|scan|odom|goal_pose|cmd_vel'
 | `robot_web_interface` | browser UI |
 | `yolo_realsense` | YOLO segmentation and grasp estimation |
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Wrong workspace is active
 
@@ -388,7 +421,7 @@ file '...' was not found in the share directory
 Fix:
 
 ```bash
-cd /home/frlab/ing_ws/src/fullpackage
+cd "$FRJOCO_WS"
 source /opt/ros/humble/setup.bash
 source install/local_setup.bash
 ros2 pkg prefix frjoco_bringup

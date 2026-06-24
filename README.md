@@ -13,11 +13,32 @@ This repository contains the current integrated stack:
 Generated build outputs are not tracked. Rebuild `build/`, `install/`, and
 `log/` locally.
 
+## Workspace Setup
+
+Choose any workspace path you want. The examples below use `~/frjoco_ws`.
+
+```bash
+export FRJOCO_WS="$HOME/frjoco_ws"
+mkdir -p "$(dirname "$FRJOCO_WS")"
+git clone https://github.com/sg6290a-creator/frjoco_fullpackage.git "$FRJOCO_WS"
+cd "$FRJOCO_WS"
+```
+
+If you already cloned this repository somewhere else, set `FRJOCO_WS` to that
+directory instead:
+
+```bash
+cd /path/to/frjoco_fullpackage
+export FRJOCO_WS="$(pwd)"
+```
+
 ## Build
 
 ```bash
-cd /home/frlab/ing_ws/src/fullpackage
+cd "$FRJOCO_WS"
 source /opt/ros/humble/setup.bash
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF
 source install/local_setup.bash
 ```
@@ -27,7 +48,8 @@ source install/local_setup.bash
 Run this in every new terminal:
 
 ```bash
-cd /home/frlab/ing_ws/src/fullpackage
+export FRJOCO_WS="$HOME/frjoco_ws"
+cd "$FRJOCO_WS"
 source /opt/ros/humble/setup.bash
 source install/local_setup.bash
 ```
@@ -41,7 +63,7 @@ ros2 pkg prefix frjoco_bringup
 Expected prefix:
 
 ```text
-/home/frlab/ing_ws/src/fullpackage/install/frjoco_bringup
+$FRJOCO_WS/install/frjoco_bringup
 ```
 
 ## Main Launch
@@ -49,6 +71,8 @@ Expected prefix:
 Arm, D405/D455, YOLO, MoveIt executor, web UI, status monitor, and RViz:
 
 ```bash
+export YOLO_MODEL_PATH="$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt"
+
 ros2 launch frjoco_bringup main.launch.py \
   enable_arm_hardware:=true \
   enable_mobile_hardware:=false \
@@ -61,12 +85,15 @@ ros2 launch frjoco_bringup main.launch.py \
   enable_nav_sensors:=false \
   enable_nav2:=false \
   enable_rtab_livox:=false \
+  model_path:="$YOLO_MODEL_PATH" \
   rviz:=true
 ```
 
 Add mobile base hardware:
 
 ```bash
+export YOLO_MODEL_PATH="$FRJOCO_WS/src/frjoco/FrJoCo_YOLO/models/sam3_finetune_rot50_e20/weights/best.pt"
+
 ros2 launch frjoco_bringup main.launch.py \
   enable_arm_hardware:=true \
   enable_mobile_hardware:=true \
@@ -76,6 +103,7 @@ ros2 launch frjoco_bringup main.launch.py \
   enable_web:=true \
   enable_move_executor:=true \
   enable_hardware_status:=true \
+  model_path:="$YOLO_MODEL_PATH" \
   rviz:=true
 ```
 
